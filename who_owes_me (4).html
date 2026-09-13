@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Who Owes Me?</title>
+    <style>
+    * {
+        box-sizing: border-box;
+    }
+
+    body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #f5f5f5;
+        color: #222;
+    }
+
+    main {
+        padding: 24px;
+        padding-bottom: 100px;
+    }
+
+    h1 {
+        margin: -24px -24px 0 -24px;
+        padding: 20px;
+        text-align: center;
+        background: #f8caca;
+        font-size: 24px;
+    }
+
+    #items, #history {
+        margin-top: 30px;
+        text-align: center;
+        color: #222;
+    }
+
+    #history h1 {
+        margin: -24px -24px 0 -24px;
+    }
+
+    .emptyState {
+        color: #888;
+        margin-top: 40px;
+        font-size: 15px;
+    }
+
+    #newButton {
+        position: fixed;
+        right: 24px;
+        bottom: 80px;
+
+        width: 60px;
+        height: 60px;
+
+        border: none;
+        border-radius: 50%;
+
+        background: #e57373;
+        color: white;
+
+        font-size: 32px;
+        cursor: pointer;
+    }
+
+    nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 65px;
+
+        display: flex;
+
+        background: white;
+        border-top: 1px solid #ddd;
+    }
+
+    nav button {
+        flex: 1;
+        height: 100%;
+
+        border: none;
+        background: none;
+
+        font-size: 16px;
+        cursor: pointer;
+    }
+
+    nav button.active {
+        background: #e57373;
+        color: white;
+    }
+
+    #newModal, #detailsModal {
+        display: none;
+
+        position: fixed;
+        inset: 0;
+
+        background: rgba(0, 0, 0, 0.25);
+        backdrop-filter: blur(6px);
+
+        justify-content: center;
+        align-items: center;
+
+        z-index: 10;
+    }
+
+    #newCard, #detailsCard {
+        background: white;
+        width: 85%;
+        max-width: 400px;
+        padding: 24px;
+        border-radius: 20px;
+
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    #newCard h2, #detailsCard h2 {
+        margin-top: 0;
+        margin-bottom: 20px;
+        text-align: center;
+        font-size: 22px;
+    }
+
+    #newCard input {
+        width: 100%;
+        padding: 14px;
+        margin-bottom: 12px;
+
+        border: 1px solid #ddd;
+        border-radius: 10px;
+
+        font-size: 16px;
+        outline: none;
+    }
+
+    #newCard input:focus {
+        border-color: #e57373;
+    }
+
+    #saveButton, #returnedButton, #closeDetailsButton {
+        width: 100%;
+        padding: 13px;
+        margin-top: 8px;
+
+        border: none;
+        border-radius: 10px;
+
+        font-size: 16px;
+        cursor: pointer;
+    }
+
+    #saveButton, #returnedButton {
+        background: #e57373;
+        color: white;
+    }
+
+    #closeDetailsButton {
+        background: #eee;
+        color: #222;
+    }
+
+    .itemCard {
+        background: white;
+        padding: 18px;
+        margin-bottom: 12px;
+        border-radius: 16px;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .itemCard.returnedCard {
+        cursor: default;
+        opacity: 0.85;
+    }
+
+    .itemCard p {
+        margin: 0;
+        font-size: 17px;
+    }
+
+    .itemCard .subtext {
+        margin-top: 4px;
+        font-size: 13px;
+        color: #888;
+    }
+
+    #loadingNote {
+        text-align: center;
+        color: #999;
+        margin-top: 40px;
+        font-size: 14px;
+    }
+    </style>
+</head>
+
+<body>
+
+<main>
+    <h1 id="homeTitle">Who Owes Me?</h1>
+
+    <section id="items">
+        <p id="loadingNote">Loading...</p>
+    </section>
+
+    <section id="history" style="display: none;">
+        <h1>History</h1>
+        <div id="historyItems"></div>
+    </section>
+</main>
+
+<div id="detailsModal">
+    <div id="detailsCard">
+        <h2>Item Details</h2>
+        <p id="detailItem"></p>
+        <p id="detailPerson"></p>
+        <p id="detailDate"></p>
+        <p id="detailDays"></p>
+        <button id="returnedButton">Mark as returned</button>
+        <button id="closeDetailsButton">Close</button>
+    </div>
+</div>
+
+<div id="newModal">
+    <div id="newCard">
+        <h2>New Item</h2>
+        <input id="itemInput" type="text" placeholder="Item">
+        <input id="personInput" type="text" placeholder="Person">
+        <input id="dateInput" type="date">
+        <button id="saveButton">Save</button>
+    </div>
+</div>
+
+<button id="newButton">+</button>
+
+<nav>
+    <button id="homeButton" class="active">Home</button>
+    <button id="historyButton">History</button>
+</nav>
+
+<script>
+let lentItems = [];
+let returnedItems = [];
+let currentItemIndex = null;
+let dataLoaded = false;
+
+// ---------- Persistence ----------
+
+async function loadData() {
+    try {
+        const lentResult = await window.storage.get('lentItems');
+        lentItems = lentResult ? JSON.parse(lentResult.value) : [];
+    } catch (e) {
+        lentItems = [];
+    }
+    try {
+        const returnedResult = await window.storage.get('returnedItems');
+        returnedItems = returnedResult ? JSON.parse(returnedResult.value) : [];
+    } catch (e) {
+        returnedItems = [];
+    }
+    dataLoaded = true;
+    renderItems();
+    renderHistory();
+}
+
+async function saveLentItems() {
+    try {
+        await window.storage.set('lentItems', JSON.stringify(lentItems));
+    } catch (e) {
+        console.error('Failed to save lent items', e);
+    }
+}
+
+async function saveReturnedItems() {
+    try {
+        await window.storage.set('returnedItems', JSON.stringify(returnedItems));
+    } catch (e) {
+        console.error('Failed to save returned items', e);
+    }
+}
+
+// ---------- Rendering ----------
+
+function daysAgoText(dateStr) {
+    let lentDate = new Date(dateStr);
+    let today = new Date();
+    lentDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+
+    let days = Math.floor((today - lentDate) / (1000 * 60 * 60 * 24));
+
+    let timeText;
+    if (days === 0) {
+        timeText = "today";
+    } else if (days === 1) {
+        timeText = "since yesterday";
+    } else {
+        timeText = "since " + days + " days";
+    }
+    return { days, timeText };
+}
+
+function renderItems() {
+    const container = document.getElementById("items");
+
+    if (!dataLoaded) {
+        container.innerHTML = '<p id="loadingNote">Loading...</p>';
+        return;
+    }
+
+    if (lentItems.length === 0) {
+        container.innerHTML = '<p class="emptyState">Nothing lent out yet.</p>';
+        return;
+    }
+
+    let allItems = "";
+    for (let i = 0; i < lentItems.length; i++) {
+        const { timeText } = daysAgoText(lentItems[i].date);
+        allItems +=
+            '<div class="itemCard" onclick="showDetails(' + i + ')">' +
+            '<p>' + lentItems[i].person + ' has your ' + lentItems[i].item + ' ' + timeText + '.</p>' +
+            '</div>';
+    }
+    container.innerHTML = allItems;
+}
+
+function renderHistory() {
+    const container = document.getElementById("historyItems");
+
+    if (!dataLoaded) {
+        container.innerHTML = '';
+        return;
+    }
+
+    if (returnedItems.length === 0) {
+        container.innerHTML = '<p class="emptyState">No returned items yet.</p>';
+        return;
+    }
+
+    let allItems = "";
+    for (let i = returnedItems.length - 1; i >= 0; i--) {
+        const entry = returnedItems[i];
+        allItems +=
+            '<div class="itemCard returnedCard">' +
+            '<p>' + entry.person + ' returned your ' + entry.item + '.</p>' +
+            '<p class="subtext">Lent on ' + entry.date + (entry.returnedDate ? (' &middot; returned on ' + entry.returnedDate) : '') + '</p>' +
+            '</div>';
+    }
+    container.innerHTML = allItems;
+}
+
+// ---------- New item modal ----------
+
+document.getElementById("newButton").onclick = function() {
+    document.getElementById("newModal").style.display = "flex";
+
+    let today = new Date();
+    let year = today.getFullYear();
+    let month = String(today.getMonth() + 1).padStart(2, "0");
+    let day = String(today.getDate()).padStart(2, "0");
+
+    document.getElementById("dateInput").value = year + "-" + month + "-" + day;
+
+    setTimeout(function() {
+        document.getElementById("itemInput").focus();
+    }, 100);
+};
+
+document.getElementById("itemInput").addEventListener("keydown", function(event) {
+    if (event.key === "Enter") {
+        event.preventDefault();
+        document.getElementById("personInput").focus();
+    }
+});
+
+document.getElementById("personInput").addEventListener("keydown", function(event) {
+    if (event.key === "Enter") {
+        event.preventDefault();
+        document.getElementById("dateInput").focus();
+    }
+});
+
+document.getElementById("dateInput").addEventListener("keydown", function(event) {
+    if (event.key === "Enter") {
+        event.preventDefault();
+        document.getElementById("saveButton").click();
+    }
+});
+
+function closeNewModal() {
+    document.getElementById("newModal").style.display = "none";
+    document.getElementById("itemInput").value = "";
+    document.getElementById("personInput").value = "";
+    document.getElementById("dateInput").value = "";
+}
+
+document.getElementById("newModal").onclick = function(event) {
+    if (event.target === this) {
+        closeNewModal();
+    }
+};
+
+document.getElementById("saveButton").onclick = function() {
+    let item = document.getElementById("itemInput").value;
+    let person = document.getElementById("personInput").value;
+    let date = document.getElementById("dateInput").value;
+
+    if (item.trim() === "" || person.trim() === "") {
+        alert("Please enter the item and person.");
+        return;
+    }
+
+    let selectedDate = new Date(date);
+    let today = new Date();
+    today.setHours(0, 0, 0, 0);
+    selectedDate.setHours(0, 0, 0, 0);
+
+    if (selectedDate > today) {
+        alert("You can't choose a future date.");
+        return;
+    }
+
+    lentItems.push({ item: item, person: person, date: date });
+    saveLentItems();
+
+    closeNewModal();
+    renderItems();
+};
+
+// ---------- Details modal ----------
+
+function showDetails(index) {
+    currentItemIndex = index;
+
+    document.getElementById("detailsModal").style.display = "flex";
+
+    document.getElementById("detailItem").textContent = "Item: " + lentItems[index].item;
+    document.getElementById("detailPerson").textContent = "Person: " + lentItems[index].person;
+    document.getElementById("detailDate").textContent = "Date lent: " + lentItems[index].date;
+
+    const { days } = daysAgoText(lentItems[index].date);
+    document.getElementById("detailDays").textContent = "Days ago: " + days;
+}
+
+document.getElementById("returnedButton").onclick = function() {
+    if (currentItemIndex === null) return;
+
+    const returnedItem = lentItems[currentItemIndex];
+
+    let today = new Date();
+    let year = today.getFullYear();
+    let month = String(today.getMonth() + 1).padStart(2, "0");
+    let day = String(today.getDate()).padStart(2, "0");
+    const returnedDate = year + "-" + month + "-" + day;
+
+    returnedItems.push({
+        item: returnedItem.item,
+        person: returnedItem.person,
+        date: returnedItem.date,
+        returnedDate: returnedDate
+    });
+
+    lentItems.splice(currentItemIndex, 1);
+    currentItemIndex = null;
+
+    saveLentItems();
+    saveReturnedItems();
+
+    document.getElementById("detailsModal").style.display = "none";
+    renderItems();
+    renderHistory();
+};
+
+document.getElementById("closeDetailsButton").onclick = function() {
+    document.getElementById("detailsModal").style.display = "none";
+};
+
+document.getElementById("detailsModal").onclick = function(event) {
+    if (event.target === this) {
+        this.style.display = "none";
+    }
+};
+
+// ---------- Nav ----------
+
+document.getElementById("homeButton").onclick = function() {
+    document.getElementById("items").style.display = "block";
+    document.getElementById("history").style.display = "none";
+    document.getElementById("newButton").style.display = "block";
+    document.getElementById("homeTitle").style.display = "block";
+
+    document.getElementById("homeButton").classList.add("active");
+    document.getElementById("historyButton").classList.remove("active");
+};
+
+document.getElementById("historyButton").onclick = function() {
+    document.getElementById("items").style.display = "none";
+    document.getElementById("history").style.display = "block";
+    document.getElementById("newButton").style.display = "none";
+    document.getElementById("homeTitle").style.display = "none";
+
+    document.getElementById("historyButton").classList.add("active");
+    document.getElementById("homeButton").classList.remove("active");
+};
+
+// ---------- Init ----------
+
+loadData();
+</script>
+</body>
+</html>
